@@ -1,0 +1,6 @@
+# Reconstructed from main.py's imports — the repo shipped no manifest.
+fastapi
+uvicorn
+pydantic
+pypdf
+llama-cpp-python

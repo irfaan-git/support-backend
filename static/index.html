@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support Agent</title>
+<style>
+  :root{
+    --ink:#14231b; --muted:#6b7d73; --faint:#9aa8a0;
+    --line:#e2e8e4; --page:#f4f6f5; --card:#fff;
+    --green:#1b7a4b; --green-deep:#0f5233; --green-tint:#e7f2eb;
+    --amber:#a9741b; --amber-tint:#fbf2df;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; height:100vh;
+  }
+  header{
+    background:var(--card); border-bottom:1px solid var(--line);
+    padding:14px 20px; display:flex; align-items:center; gap:10px; flex:none;
+  }
+  header .dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+  header h1{font-size:15px;font-weight:600;margin:0}
+  header .sub{font-size:12.5px;color:var(--muted);margin-left:auto}
+
+  #log{flex:1; overflow-y:auto; padding:22px 20px; display:flex; flex-direction:column; gap:14px}
+  .wrap{max-width:720px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+
+  .msg{display:flex}
+  .msg.me{justify-content:flex-end}
+  .bubble{
+    max-width:80%; padding:11px 15px; border-radius:14px;
+    border:1px solid var(--line); background:var(--card); white-space:pre-wrap;
+  }
+  .me .bubble{background:var(--green); border-color:var(--green); color:#fff}
+
+  .ticket{
+    max-width:80%; border:1px solid #ebd6b4; background:var(--amber-tint);
+    border-left:3px solid var(--amber); border-radius:0 12px 12px 0; padding:12px 15px;
+  }
+  .ticket .tag{
+    font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--amber); margin-bottom:5px;
+  }
+  .ticket .title{font-weight:600; margin-bottom:4px}
+  .ticket .desc{font-size:13.5px; color:#4a5a51}
+
+  .hint{font-size:12.5px;color:var(--faint);text-align:center;padding:6px 0}
+  .thinking{color:var(--muted);font-style:italic}
+
+  .actions{display:flex;gap:8px;margin-top:8px}
+  .link{
+    background:none;border:1px solid var(--line);border-radius:999px;
+    padding:5px 12px;font-size:12.5px;color:var(--green-deep);cursor:pointer;
+  }
+  .link:hover{background:var(--green-tint);border-color:var(--green)}
+  .link:disabled{opacity:.45;cursor:default}
+
+  footer{background:var(--card);border-top:1px solid var(--line);padding:14px 20px;flex:none}
+  form{max-width:720px;margin:0 auto;display:flex;gap:10px}
+  input{
+    flex:1;padding:12px 15px;border:1px solid var(--line);border-radius:999px;
+    font:inherit;outline:none;background:var(--page);
+  }
+  input:focus{border-color:var(--green);background:#fff}
+  button.send{
+    padding:12px 22px;border:none;border-radius:999px;background:var(--green);
+    color:#fff;font:inherit;font-weight:600;cursor:pointer;
+  }
+  button.send:disabled{opacity:.45;cursor:default}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot"></span>
+  <h1>Support Agent</h1>
+  <span class="sub" id="status">running locally · Gemma 3n</span>
+</header>
+
+<div id="log">
+  <div class="wrap" id="wrap">
+    <div class="hint">
+      Ask about the support portal. Anything not in the docs becomes a ticket.
+    </div>
+  </div>
+</div>
+
+<footer>
+  <form id="form">
+    <input id="input" placeholder="Ask a question…" autocomplete="off" autofocus>
+    <button class="send" id="send" type="submit">Send</button>
+  </form>
+</footer>
+
+<script>
+const wrap  = document.getElementById('wrap');
+const form  = document.getElementById('form');
+const input = document.getElementById('input');
+const send  = document.getElementById('send');
+const logEl = document.getElementById('log');
+
+function scroll(){ logEl.scrollTop = logEl.scrollHeight; }
+
+function addMsg(text, mine){
+  const row = document.createElement('div');
+  row.className = 'msg' + (mine ? ' me' : '');
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = text;
+  row.appendChild(b);
+  wrap.appendChild(row);
+  scroll();
+  return b;
+}
+
+function addTicket(title, desc){
+  const t = document.createElement('div');
+  t.className = 'ticket';
+  t.innerHTML =
+    '<div class="tag">Ticket raised</div>' +
+    '<div class="title"></div><div class="desc"></div>';
+  t.querySelector('.title').textContent = title;
+  t.querySelector('.desc').textContent = desc;
+  wrap.appendChild(t);
+  scroll();
+}
+
+// "Not helpful" → /feedback turns the exchange into a ticket.
+function addFeedback(question, answer){
+  const row = document.createElement('div');
+  row.className = 'actions';
+  const btn = document.createElement('button');
+  btn.className = 'link';
+  btn.textContent = 'This did not help — raise a ticket';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = 'Raising…';
+    try{
+      const r = await fetch('/feedback', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ user_message: question, bot_answer: answer })
+      });
+      const d = await r.json();
+      addTicket(d.title, d.description);
+      row.remove();
+    }catch(e){
+      btn.textContent = 'Failed — try again';
+      btn.disabled = false;
+    }
+  };
+  row.appendChild(btn);
+  wrap.appendChild(row);
+  scroll();
+}
+
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const q = input.value.trim();
+  if (!q) return;
+
+  addMsg(q, true);
+  input.value = '';
+  input.disabled = send.disabled = true;
+
+  const thinking = addMsg('Thinking…', false);
+  thinking.classList.add('thinking');
+
+  try{
+    const r = await fetch('/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ user_message: q })
+    });
+    const d = await r.json();
+    thinking.parentElement.remove();
+
+    if (d.action === 'raise_ticket'){
+      addTicket(d.title, d.description);
+    } else {
+      addMsg(d.reply, false);
+      addFeedback(q, d.reply);
+    }
+  }catch(err){
+    thinking.classList.remove('thinking');
+    thinking.textContent = 'Could not reach the server. Is it still running?';
+  }finally{
+    input.disabled = send.disabled = false;
+    input.focus();
+  }
+};
+</script>
+</body>
+</html>
